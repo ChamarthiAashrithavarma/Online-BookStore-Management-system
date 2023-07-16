@@ -1,0 +1,84 @@
+import boto3
+
+# Initialize AWS resources
+dynamodb = boto3.resource('dynamodb')
+s3 = boto3.client('s3')
+bucket_name = 'your_s3_bucket_name'
+
+# DynamoDB table name
+table_name = 'books'
+table = dynamodb.Table(table_name)
+
+def lambda_handler(event, context):
+    # Get the HTTP method and path from the event
+    http_method = event['httpMethod']
+    path = event['path']
+    
+    # Handle different routes
+    if http_method == 'GET' and path == '/books':
+        # Retrieve all books from DynamoDB table
+        response = table.scan()
+        books = response['Items']
+        return {
+            'statusCode': 200,
+            'body': {
+                'books': books
+            }
+        }
+    
+    elif http_method == 'GET' and path.startswith('/book/'):
+        # Extract book ID from the path
+        book_id = path.split('/')[-1]
+        
+        # Retrieve book details from DynamoDB
+        response = table.get_item(Key={'id': book_id})
+        book = response.get('Item')
+        if book:
+            return {
+                'statusCode': 200,
+                'body': {
+                    'book': book
+                }
+            }
+        else:
+            return {
+                'statusCode': 404,
+                'body': 'Book not found'
+            }
+    
+    elif http_method == 'POST' and path == '/books':
+        # Get book details from the request body
+        body = event['body']
+        title = body['title']
+        author = body['author']
+        description = body['description']
+        
+        # Generate a unique ID for the book
+        # You may use a UUID or any other method to generate a unique ID
+        id = generate_unique_id()
+        
+        # Upload book image to S3
+        image_file = body['image']
+        s3.upload_fileobj(image_file, bucket_name, f'images/{id}.jpg')
+        image_url = f'https://{bucket_name}.s3.amazonaws.com/images/{id}.jpg'
+        
+        # Add book details to DynamoDB
+        table.put_item(
+            Item={
+                'id': id,
+                'title': title,
+                'author': author,
+                'description': description,
+                'image_url': image_url
+            }
+        )
+        return {
+            'statusCode': 201,
+            'body': 'Book added successfully'
+        }
+    
+    else:
+        return {
+            'statusCode': 404,
+            'body': 'Route not found'
+        }
